@@ -1,3 +1,0 @@
-[submodule "external/openfx"]
-	path = external/openfx
-	url = https://github.com/AcademySoftwareFoundation/openfx
