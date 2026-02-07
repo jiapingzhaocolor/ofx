@@ -4,8 +4,6 @@
 //    only selects a middle-gray reference value (exactly as in the DCTL).
 //  - Processing is per-channel (RGB) with a 3-zone curve (shadows / preserve mids / highlights),
 //    plus an optional on-screen curve overlay.
-//
-// Build notes are in README.md. This code targets the standard OpenFX "Support" C++ wrapper.
 
 #include "ofxsImageEffect.h"
 #include "ofxsMultiThread.h"
@@ -14,6 +12,15 @@
 #include <algorithm>
 #include <cmath>
 #include <cfloat>
+#include <memory>
+
+#ifndef OFX_EXPORT
+  #ifdef _WIN32
+    #define OFX_EXPORT extern "C" __declspec(dllexport)
+  #else
+    #define OFX_EXPORT extern "C"
+  #endif
+#endif
 
 #define kPluginIdentifier "com.jpzhao.SplitToneV2"
 #define kPluginName       "Split Tone v2 (DCTL Port)"
@@ -169,9 +176,9 @@ public:
         if (_p.showCurve && w > 0 && h > 0) {
           // DCTL: x_norm = X/Width; y_norm = 1 - Y/Height
           // In OFX, image bounds may not start at (0,0), so normalize relative to bounds.
-          const OfxRectI b = dst->getBounds();
-          const float xNorm = (float)(x - b.x1) / (float)w;
-          const float yNorm = 1.0f - ((float)(y - b.y1) / (float)h);
+          const OfxRectI bnd = dst->getBounds();
+          const float xNorm = (float)(x - bnd.x1) / (float)w;
+          const float yNorm = 1.0f - ((float)(y - bnd.y1) / (float)h);
 
           const float curveR = applyCurve(xNorm, shadowEnd, highlightStart, _p.pShadow[0], _p.pHighlight[0]);
           const float curveG = applyCurve(xNorm, shadowEnd, highlightStart, _p.pShadow[1], _p.pHighlight[1]);
@@ -245,13 +252,13 @@ public:
     std::unique_ptr<const OFX::Image> src(_srcClip->fetchImage(args.time));
 
     if (!dst || !src) {
-      throwSuiteStatusException(kOfxStatFailed);
+      OFX::throwSuiteStatusException(kOfxStatFailed);
     }
 
     // Expect float RGBA
     if (dst->getPixelDepth() != OFX::eBitDepthFloat || src->getPixelDepth() != OFX::eBitDepthFloat ||
         dst->getPixelComponents() != OFX::ePixelComponentRGBA || src->getPixelComponents() != OFX::ePixelComponentRGBA) {
-      throwSuiteStatusException(kOfxStatErrUnsupported);
+      OFX::throwSuiteStatusException(kOfxStatErrUnsupported);
     }
 
     ParamsSnapshot p = getParamsAtTime(_preset, _preserve, _p1, _p2, _p3, _p4, _p5, _p6, _showCurve, args.time);
@@ -262,7 +269,6 @@ public:
     proc.setParams(p);
 
     proc.setRenderWindow(args.renderWindow);
-    proc.setPixelAspectRatio(dst->getPixelAspectRatio());
     proc.process();
   }
 
@@ -364,7 +370,7 @@ public:
     preserve->setIncrement(0.01);
     page->addChild(*preserve);
 
-    // Shadow RGB
+    // Shadow/Highlight RGB sliders
     auto makeSlider = [&](const char* name, const char* label, double defVal) -> OFX::DoubleParamDescriptor* {
       OFX::DoubleParamDescriptor *p = desc.defineDoubleParam(name);
       p->setLabel(label);
