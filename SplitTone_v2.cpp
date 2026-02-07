@@ -11,16 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cfloat>
 #include <memory>
-
-#ifndef OFX_EXPORT
-  #ifdef _WIN32
-    #define OFX_EXPORT extern "C" __declspec(dllexport)
-  #else
-    #define OFX_EXPORT extern "C"
-  #endif
-#endif
 
 #define kPluginIdentifier "com.jpzhao.SplitToneV2"
 #define kPluginName       "Split Tone v2 (DCTL Port)"
@@ -134,12 +125,11 @@ static inline ParamsSnapshot getParamsAtTime(OFX::ChoiceParam* preset,
   return s;
 }
 
-// Simple float RGBA processor
+// Float RGBA processor
 class SplitToneProcessor : public OFX::ImageProcessor {
 public:
   SplitToneProcessor(OFX::ImageEffect &instance)
-  : OFX::ImageProcessor(instance)
-  {}
+  : OFX::ImageProcessor(instance) {}
 
   void setSrcImg(const OFX::Image *src) { _src = src; }
   void setParams(const ParamsSnapshot& p) { _p = p; }
@@ -401,24 +391,15 @@ public:
   }
 };
 
-void getSplitTonePluginID(OFX::PluginFactoryArray &ids) {
+// IMPORTANT:
+// Do NOT export OfxGetPlugin / OfxGetNumberOfPlugins / OfxSetHost yourself when
+// compiling the Support Library sources into your plugin.
+// The Support Library provides those symbols and calls this function instead.
+namespace OFX {
+namespace Plugin {
+void getPluginIDs(OFX::PluginFactoryArray &ids) {
   static SplitTonePluginFactory p;
   ids.push_back(&p);
 }
-
-OFX_EXPORT int OfxGetNumberOfPlugins(void) {
-  OFX::PluginFactoryArray ids;
-  getSplitTonePluginID(ids);
-  return (int)ids.size();
-}
-
-OFX_EXPORT OfxPlugin * OfxGetPlugin(int nth) {
-  OFX::PluginFactoryArray ids;
-  getSplitTonePluginID(ids);
-  if (nth < 0 || nth >= (int)ids.size()) return nullptr;
-  return ids[nth]->getPlugin();
-}
-
-OFX_EXPORT void OfxSetHost(OfxHost *host) {
-  OFX::Plugin::setHost(host);
-}
+} // namespace Plugin
+} // namespace OFX
