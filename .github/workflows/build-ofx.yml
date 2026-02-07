@@ -1,0 +1,88 @@
+name: build-ofx
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fetch OpenFX
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/AcademySoftwareFoundation/openfx external/openfx
+
+      # Sanity check: prove the header exists where we think it does
+      - name: Debug OpenFX header locations
+        shell: bash
+        run: |
+          set -e
+          echo "Workspace: $GITHUB_WORKSPACE"
+          ls -la external/openfx/Support/Plugins/include | head -n 50
+          test -f external/openfx/Support/Plugins/include/ofxsProcessing.H
+          echo "OK: ofxsProcessing.H exists"
+
+      - name: Configure
+        shell: bash
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DOFX_SUPPORT_ROOT="$GITHUB_WORKSPACE/external/openfx/Support"
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake --build build --config Release
+
+      - name: Verify output name
+        shell: bash
+        run: |
+          set -e
+          FOUND="$(find build -name 'SplitToneV2.ofx' -type f | head -n 1)"
+          if [ -z "$FOUND" ]; then
+            echo "ERROR: SplitToneV2.ofx not found under build/"
+            find build -maxdepth 4 -type f
+            exit 1
+          fi
+          echo "Found: $FOUND"
+
+      - name: Package bundle (macOS/Linux)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -e
+          mkdir -p dist/SplitToneV2.ofx.bundle/Contents
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            ARCH="MacOS"
+          else
+            ARCH="Linux-x86-64"
+          fi
+          mkdir -p "dist/SplitToneV2.ofx.bundle/Contents/$ARCH"
+          OFXBIN="$(find build -name 'SplitToneV2.ofx' -type f | head -n 1)"
+          cp "$OFXBIN" "dist/SplitToneV2.ofx.bundle/Contents/$ARCH/SplitToneV2.ofx"
+
+      - name: Package bundle (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/SplitToneV2.ofx.bundle/Contents/Win64 | Out-Null
+          $ofx = Get-ChildItem -Recurse build -Filter SplitToneV2.ofx | Select-Object -First 1
+          if (-not $ofx) {
+            Write-Error "ERROR: SplitToneV2.ofx not found under build/"
+            Get-ChildItem -Recurse build | Select-Object FullName
+            exit 1
+          }
+          Copy-Item $ofx.FullName dist/SplitToneV2.ofx.bundle/Contents/Win64/SplitToneV2.ofx
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SplitToneV2-${{ matrix.os }}
+          path: dist/SplitToneV2.ofx.bundle
